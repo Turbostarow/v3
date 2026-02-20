@@ -1,0 +1,24 @@
+{
+  "name": "discord-leaderboard-bot",
+  "version": "1.0.0",
+  "description": "Production-grade stateless Discord leaderboard for Marvel Rivals, Overwatch & Deadlock",
+  "type": "module",
+  "scripts": {
+    "sync": "node src/sync.js",
+    "test": "node --experimental-vm-modules tests/run-tests.js",
+    "validate-secrets": "node tests/validate-secrets.js",
+    "test:parser": "node tests/parser.test.js",
+    "test:renderer": "node tests/renderer.test.js",
+    "test:storage": "node tests/storage.test.js",
+    "test:sorting": "node tests/sorting.test.js",
+    "test:integration": "node tests/integration.test.js",
+    "test:secrets": "node tests/validate-secrets.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

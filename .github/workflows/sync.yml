@@ -1,0 +1,100 @@
+name: Leaderboard Sync
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # Every 15 minutes
+  workflow_dispatch:           # Allow manual trigger from GitHub UI
+    inputs:
+      run_validation:
+        description: 'Run secrets validation before sync'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  # ── Job 1: Validate secrets ─────────────────────────────────
+  validate:
+    name: 🔍 Validate Secrets
+    runs-on: ubuntu-latest
+    # Run on manual trigger with validation enabled, OR on first-ever run
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_validation == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: 🔍 Validate GitHub Secrets
+        run: npm run test:secrets
+        env:
+          DISCORD_TOKEN:               ${{ secrets.DISCORD_TOKEN }}
+          LISTENING_CHANNEL_ID:        ${{ secrets.LISTENING_CHANNEL_ID }}
+          MARVEL_RIVALS_WEBHOOK_URL:   ${{ secrets.MARVEL_RIVALS_WEBHOOK_URL }}
+          OVERWATCH_WEBHOOK_URL:       ${{ secrets.OVERWATCH_WEBHOOK_URL }}
+          DEADLOCK_WEBHOOK_URL:        ${{ secrets.DEADLOCK_WEBHOOK_URL }}
+          MARVEL_RIVALS_MESSAGE_ID:    ${{ secrets.MARVEL_RIVALS_MESSAGE_ID }}
+          OVERWATCH_MESSAGE_ID:        ${{ secrets.OVERWATCH_MESSAGE_ID }}
+          DEADLOCK_MESSAGE_ID:         ${{ secrets.DEADLOCK_MESSAGE_ID }}
+
+  # ── Job 2: Run unit tests ────────────────────────────────────
+  test:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: 🧪 Run unit tests
+        run: npm test
+
+  # ── Job 3: Sync leaderboards ─────────────────────────────────
+  sync:
+    name: 🔄 Sync Leaderboards
+    runs-on: ubuntu-latest
+    needs: test   # Only sync if tests pass
+    concurrency:
+      group: leaderboard-sync
+      cancel-in-progress: false  # Never cancel an in-progress sync
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: 🔄 Run leaderboard sync
+        run: npm run sync
+        timeout-minutes: 5
+        env:
+          DISCORD_TOKEN:               ${{ secrets.DISCORD_TOKEN }}
+          LISTENING_CHANNEL_ID:        ${{ secrets.LISTENING_CHANNEL_ID }}
+          MARVEL_RIVALS_WEBHOOK_URL:   ${{ secrets.MARVEL_RIVALS_WEBHOOK_URL }}
+          OVERWATCH_WEBHOOK_URL:       ${{ secrets.OVERWATCH_WEBHOOK_URL }}
+          DEADLOCK_WEBHOOK_URL:        ${{ secrets.DEADLOCK_WEBHOOK_URL }}
+          MARVEL_RIVALS_MESSAGE_ID:    ${{ secrets.MARVEL_RIVALS_MESSAGE_ID }}
+          OVERWATCH_MESSAGE_ID:        ${{ secrets.OVERWATCH_MESSAGE_ID }}
+          DEADLOCK_MESSAGE_ID:         ${{ secrets.DEADLOCK_MESSAGE_ID }}
+          FETCH_LIMIT:                 ${{ secrets.FETCH_LIMIT || '50' }}
+          API_DELAY_MS:                ${{ secrets.API_DELAY_MS || '1000' }}
