@@ -157,8 +157,8 @@ const GAME_HEADERS = {
 };
 
 /**
- * Render a full leaderboard message (human-readable portion only).
- * State block is appended separately by sync.js.
+ * Render a full leaderboard message (human-readable, no state block).
+ * State is now stored separately as a pinned message in the listening channel.
  */
 export function renderLeaderboard(players, game) {
   const header = GAME_HEADERS[game] ?? `## ${game} Leaderboard`;

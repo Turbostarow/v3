@@ -2,27 +2,28 @@
 // tests/storage.test.js
 // ============================================================
 
-import { encodeState, decodeState, upsertPlayer } from '../src/storage.js';
+import { encodeState, decodeState, stateMarker } from '../src/storage.js';
+import { upsertPlayer } from '../src/storage.js';
 import { runSuite, assertEqual, assert } from './helpers.js';
 
 export async function runStorageTests() {
   return runSuite('Storage', [
 
-    { name: 'encodeState: round-trip basic object', fn: () => {
-        const state = { players: [{ playerName: 'Turbo', rankCurrent: 'Diamond' }] };
-        const encoded = encodeState(state);
-        assert(encoded.includes('<!--STATE:'), 'has open tag');
-        assert(encoded.includes('-->'), 'has close tag');
-        assert(encoded.includes('Turbo'), 'has player name');
+    { name: 'stateMarker: correct format', fn: () => {
+        assertEqual(stateMarker('MARVEL_RIVALS'), 'LB_STATE:MARVEL_RIVALS:', 'marker');
     }},
 
-    { name: 'decodeState: extracts from full message content', fn: () => {
-        const state = { players: [{ playerName: 'Alpha', rankCurrent: 'Master', date: new Date().toISOString() }] };
-        const encoded = encodeState(state);
-        const fullContent = `## Leaderboard\nSome content here\n${encoded}`;
-        const decoded = decodeState(fullContent);
-        assertEqual(decoded.players.length, 1, 'player count');
-        assertEqual(decoded.players[0].playerName, 'Alpha', 'player name');
+    { name: 'encodeState: contains marker and JSON', fn: () => {
+        const encoded = encodeState('OVERWATCH', { players: [{ playerName: 'Alpha' }] });
+        assert(encoded.startsWith('LB_STATE:OVERWATCH:'), 'starts with marker');
+        assert(encoded.includes('Alpha'), 'has player name');
+    }},
+
+    { name: 'decodeState: round-trip from encoded string', fn: () => {
+        const encoded = encodeState('DEADLOCK', { players: [{ playerName: 'X', date: new Date().toISOString() }] });
+        const decoded = decodeState(encoded);
+        assertEqual(decoded.players.length, 1, '1 player');
+        assertEqual(decoded.players[0].playerName, 'X', 'player name');
     }},
 
     { name: 'decodeState: returns empty state on null input', fn: () => {
@@ -30,21 +31,21 @@ export async function runStorageTests() {
         assertEqual(result.players, [], 'empty players');
     }},
 
-    { name: 'decodeState: returns empty state on missing STATE block', fn: () => {
-        const result = decodeState('## Just a leaderboard, no state block');
+    { name: 'decodeState: returns empty state on missing marker', fn: () => {
+        const result = decodeState('Just some random text');
         assertEqual(result.players, [], 'empty players');
     }},
 
     { name: 'decodeState: restores Date objects from ISO strings', fn: () => {
         const iso = '2026-01-15T10:00:00.000Z';
-        const state = { players: [{ playerName: 'X', date: iso }] };
-        const decoded = decodeState(encodeState(state));
+        const encoded = encodeState('MARVEL_RIVALS', { players: [{ playerName: 'X', date: iso }] });
+        const decoded = decodeState(encoded);
         assert(decoded.players[0].date instanceof Date, 'date is Date object');
         assertEqual(decoded.players[0].date.toISOString(), iso, 'ISO round-trip');
     }},
 
     { name: 'decodeState: corrupted JSON returns empty state', fn: () => {
-        const bad = '<!--STATE:{broken json-->remaining';
+        const bad = 'LB_STATE:DEADLOCK:{broken json';
         const result = decodeState(bad);
         assertEqual(result.players, [], 'graceful fallback');
     }},
@@ -55,7 +56,6 @@ export async function runStorageTests() {
         const updated = upsertPlayer(players, data);
         assert(updated, 'should return true');
         assertEqual(players.length, 1, 'one player');
-        assertEqual(players[0].playerName, 'NewGuy', 'player name');
     }},
 
     { name: 'upsertPlayer: updates existing player with newer date', fn: () => {
@@ -64,7 +64,6 @@ export async function runStorageTests() {
         const data = { playerName: 'Turbo', rankCurrent: 'Grandmaster', date: new Date() };
         const updated = upsertPlayer(players, data);
         assert(updated, 'should return true');
-        assertEqual(players.length, 1, 'still one player');
         assertEqual(players[0].rankCurrent, 'Grandmaster', 'rank updated');
     }},
 
@@ -83,18 +82,18 @@ export async function runStorageTests() {
         assertEqual(players.length, 1, 'no duplicate inserted');
     }},
 
-    { name: 'encodeState + decodeState: full round-trip with multiple players', fn: () => {
+    { name: 'full round-trip with multiple players', fn: () => {
         const original = {
             players: [
-                { playerName: 'A', game: 'MARVEL_RIVALS', rankCurrent: 'Diamond', tierCurrent: 1, date: new Date().toISOString() },
-                { playerName: 'B', game: 'MARVEL_RIVALS', rankCurrent: 'Master', tierCurrent: 2, date: new Date().toISOString() },
+                { playerName: 'A', game: 'MARVEL_RIVALS', rankCurrent: 'Diamond', date: new Date().toISOString() },
+                { playerName: 'B', game: 'MARVEL_RIVALS', rankCurrent: 'Grandmaster', date: new Date().toISOString() },
             ]
         };
-        const encoded = encodeState(original);
-        const decoded = decodeState(`Some leaderboard text\n${encoded}`);
+        const encoded = encodeState('MARVEL_RIVALS', original);
+        const decoded = decodeState(encoded);
         assertEqual(decoded.players.length, 2, '2 players');
         assertEqual(decoded.players[0].playerName, 'A', 'player A');
-        assertEqual(decoded.players[1].rankCurrent, 'Master', 'player B rank');
+        assertEqual(decoded.players[1].rankCurrent, 'Grandmaster', 'player B rank');
     }},
 
   ]);

@@ -5,10 +5,13 @@
 import 'dotenv/config';
 import {
   loginBot, destroyBot, fetchMessages, deleteMessage,
-  fetchWebhookMessage, postWebhookMessage, editWebhookMessage, sleep,
+  fetchWebhookMessage, postWebhookMessage, editWebhookMessage,
+  fetchStateMessage, createStateMessage, updateStateMessage,
+  sleep,
 } from './discord.js';
 import { parseMessage } from './parser.js';
-import { decodeState, encodeState, upsertPlayer } from './storage.js';
+import { decodeState, encodeState, stateMarker } from './storage.js';
+import { upsertPlayer } from './storage.js';
 import {
   renderLeaderboard,
   sortMarvelRivals, sortOverwatch, sortDeadlock,
@@ -130,21 +133,18 @@ async function processGame(gameType, updates) {
 
   console.log(`\n[sync] ── Processing ${gameType} (${updates.length} update(s)) ──`);
 
-  // 3a. Load current state from webhook message
-  let currentContent = null;
+  // 3a. Load current state from pinned message in listening channel
+  let stateMsg = null;
   try {
-    currentContent = await fetchWebhookMessage(cfg.webhookUrl, cfg.messageId);
-    console.log(`[sync] ${gameType}: Loaded existing webhook message`);
+    stateMsg = await fetchStateMessage(CONFIG.listeningChannelId, gameType);
   } catch (err) {
-    console.warn(`[sync] ${gameType}: Could not fetch webhook message, starting fresh: ${err.message}`);
+    console.warn(`[sync] ${gameType}: Could not fetch pinned state message: ${err.message}`);
   }
 
-  const state = decodeState(currentContent);
+  const state = decodeState(stateMsg?.content ?? null);
   console.log(`[sync] ${gameType}: ${state.players.length} existing player(s) in state`);
 
   // 3b. Apply each update & delete source messages
-  const successfulDeletes = [];
-
   for (const { msg, data } of updates) {
     try {
       const updated = upsertPlayer(state.players, data);
@@ -155,7 +155,6 @@ async function processGame(gameType, updates) {
         console.log(`[sync] ${gameType}: Skipped stale update for ${data.playerName}`);
       }
 
-      // Delete the source message
       await sleep(API_DELAY);
       const deleted = await deleteMessage(msg);
       if (deleted) {
@@ -168,39 +167,43 @@ async function processGame(gameType, updates) {
     } catch (err) {
       console.error(`[sync] ${gameType}: Error processing message ${msg.id}:`, err.message);
       stats.errors++;
-      // Do NOT delete if processing failed
     }
   }
 
-  // 3c. Sort
+  // 3c. Sort & render (clean display only — no JSON)
   const sorted = cfg.sortFn(state.players);
+  const rendered = renderLeaderboard(sorted, gameType);
 
-  // 3d. Render human-readable portion
-  const humanReadable = renderLeaderboard(sorted, gameType);
-
-  // 3e. Append hidden state block
-  const fullContent = `${humanReadable}\n${encodeState({ players: state.players })}`;
-
-  // 3f. Post or edit webhook message
+  // 3d. Post or edit the public webhook leaderboard message
   try {
     if (cfg.messageId) {
-      await editWebhookMessage(cfg.webhookUrl, cfg.messageId, fullContent);
+      await editWebhookMessage(cfg.webhookUrl, cfg.messageId, rendered);
     } else {
-      const newId = await postWebhookMessage(cfg.webhookUrl, fullContent);
-      // Print so the operator can persist the ID in GitHub Secrets
+      const newId = await postWebhookMessage(cfg.webhookUrl, rendered);
       console.log(`\n[sync] ⚠️  NEW MESSAGE ID for ${gameType}: ${newId}`);
-      console.log(`[sync] ⚠️  Add this to your GitHub Secrets / .env as:`);
       const secretKey = {
         MARVEL_RIVALS: 'MARVEL_RIVALS_MESSAGE_ID',
         OVERWATCH:     'OVERWATCH_MESSAGE_ID',
         DEADLOCK:      'DEADLOCK_MESSAGE_ID',
       }[gameType];
-      console.log(`        ${secretKey}=${newId}\n`);
-      // Update in-memory config so subsequent loops in same run use correct ID
+      console.log(`[sync] ⚠️  Add to your .env and GitHub Secrets: ${secretKey}=${newId}\n`);
       cfg.messageId = newId;
     }
   } catch (err) {
     console.error(`[sync] ${gameType}: Failed to update webhook message:`, err.message);
+    stats.errors++;
+  }
+
+  // 3e. Save updated state to pinned message in listening channel
+  try {
+    const newStateContent = encodeState(gameType, { players: state.players });
+    if (stateMsg) {
+      await updateStateMessage(CONFIG.listeningChannelId, stateMsg.id, newStateContent);
+    } else {
+      await createStateMessage(CONFIG.listeningChannelId, newStateContent);
+    }
+  } catch (err) {
+    console.error(`[sync] ${gameType}: Failed to save state:`, err.message);
     stats.errors++;
   }
 

@@ -100,7 +100,42 @@ export async function deleteMessage(message, retries = 3) {
   return false;
 }
 
-// ── Webhook operations ────────────────────────────────────────
+// ── Pinned state messages (in listening channel) ──────────────
+
+/**
+ * Find the pinned state message for a specific game in the listening channel.
+ * Returns { id, content } or null if not found.
+ */
+export async function fetchStateMessage(channelId, game) {
+  const channel = await client.channels.fetch(channelId);
+  const pinned = await channel.messages.fetchPinned();
+  const marker = `LB_STATE:${game}:`;
+  const found = [...pinned.values()].find(m => m.content.startsWith(marker));
+  if (!found) return null;
+  return { id: found.id, content: found.content };
+}
+
+/**
+ * Create a new pinned state message for a game in the listening channel.
+ * Returns the created message object.
+ */
+export async function createStateMessage(channelId, content) {
+  const channel = await client.channels.fetch(channelId);
+  const msg = await channel.send(content);
+  await msg.pin();
+  console.log(`[discord] Created and pinned state message: ${msg.id}`);
+  return msg;
+}
+
+/**
+ * Update an existing pinned state message.
+ */
+export async function updateStateMessage(channelId, messageId, content) {
+  const channel = await client.channels.fetch(channelId);
+  const msg = await channel.messages.fetch(messageId);
+  await msg.edit(content);
+  console.log(`[discord] Updated state message: ${messageId}`);
+}
 
 /**
  * Fetch the current content of a webhook message.
