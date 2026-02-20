@@ -74,6 +74,15 @@ async function main() {
         byGame[parsed.game].push({ msg, data: parsed });
       } else {
         unparsed.push(msg);
+        // Show WHY the message was skipped — very useful for debugging
+        const preview = msg.content.slice(0, 120).replace(/\n/g, '↵');
+        const hasPrefix = /^LB_UPDATE_(MR|OW|DL):/i.test(msg.content.trim());
+        if (hasPrefix) {
+          console.warn(`[sync] ⚠️  PARSE FAILED (has LB prefix but failed validation):`);
+          console.warn(`         "${preview}"`);
+        } else {
+          console.log(`[sync] Skipping non-LB message: "${preview}"`);
+        }
       }
     }
 

@@ -114,31 +114,46 @@ export function parseMarvelRivals(content) {
 
   // Extract @PlayerName (may contain spaces until the first non-@ word ends)
   const playerMatch = body.match(/^@(.+?)\s+(\S+)\s+(.+)$/);
-  if (!playerMatch) return null;
+  if (!playerMatch) {
+    console.warn(`[parser] MR: could not extract @PlayerName role rest from: "${body.slice(0,80)}"`);
+    return null;
+  }
 
   const playerName = sanitise(playerMatch[1]);
   const role = sanitise(playerMatch[2]);
   const rest = playerMatch[3];
 
   // Now parse: Rank_current tier_current Rank_peak tier_peak date
-  // Rank can be multi-word, tier is an integer
   const rankPattern = new RegExp(
     `^(${mrRankAlt})\\s+(\\d+)\\s+(${mrRankAlt})\\s+(\\d+)\\s+(.+)$`,
     'i'
   );
   const m = rest.match(rankPattern);
-  if (!m) return null;
+  if (!m) {
+    console.warn(`[parser] MR: could not match rank pattern in: "${rest.slice(0,80)}"`);
+    console.warn(`[parser] MR: valid ranks are: ${MR_RANKS.join(', ')}`);
+    return null;
+  }
 
   const [, rankCurrent, tierCurrentRaw, rankPeak, tierPeakRaw, dateRaw] = m;
 
   const rankCurrentNorm = normaliseRankName(rankCurrent, MR_RANKS);
   const rankPeakNorm = normaliseRankName(rankPeak, MR_RANKS);
-  if (!rankCurrentNorm || !rankPeakNorm) return null;
+  if (!rankCurrentNorm || !rankPeakNorm) {
+    console.warn(`[parser] MR: invalid rank name — current:"${rankCurrent}" peak:"${rankPeak}"`);
+    return null;
+  }
 
   const tierCurrent = parseInt(tierCurrentRaw, 10);
   const tierPeak = parseInt(tierPeakRaw, 10);
-  if (tierCurrent < 1 || tierCurrent > 3) return null;
-  if (tierPeak < 1 || tierPeak > 3) return null;
+  if (tierCurrent < 1 || tierCurrent > 3) {
+    console.warn(`[parser] MR: tierCurrent ${tierCurrent} out of range 1-3`);
+    return null;
+  }
+  if (tierPeak < 1 || tierPeak > 3) {
+    console.warn(`[parser] MR: tierPeak ${tierPeak} out of range 1-3`);
+    return null;
+  }
 
   return {
     game: 'MARVEL_RIVALS',
@@ -163,7 +178,10 @@ export function parseOverwatch(content) {
   const body = content.replace(/^\s*LB_UPDATE_OW:\s*/i, '').trim();
 
   const playerMatch = body.match(/^@(.+?)\s+(\S+)\s+(.+)$/);
-  if (!playerMatch) return null;
+  if (!playerMatch) {
+    console.warn(`[parser] OW: could not extract @PlayerName role rest from: "${body.slice(0,80)}"`);
+    return null;
+  }
 
   const playerName = sanitise(playerMatch[1]);
   const role = sanitise(playerMatch[2]);
@@ -174,25 +192,38 @@ export function parseOverwatch(content) {
     'i'
   );
   const m = rest.match(rankPattern);
-  if (!m) return null;
+  if (!m) {
+    console.warn(`[parser] OW: could not match rank pattern in: "${rest.slice(0,80)}"`);
+    console.warn(`[parser] OW: expected format: Rank tier SR PeakRank peakTier peakSR date`);
+    console.warn(`[parser] OW: valid ranks are: ${OW_RANKS.join(', ')}`);
+    return null;
+  }
 
   const [, rankCurrent, tierCurrentRaw, currentValueRaw,
          rankPeak, tierPeakRaw, peakValueRaw, dateRaw] = m;
 
   const rankCurrentNorm = normaliseRankName(rankCurrent, OW_RANKS);
   const rankPeakNorm = normaliseRankName(rankPeak, OW_RANKS);
-  if (!rankCurrentNorm || !rankPeakNorm) return null;
+  if (!rankCurrentNorm || !rankPeakNorm) {
+    console.warn(`[parser] OW: invalid rank — current:"${rankCurrent}" peak:"${rankPeak}"`);
+    return null;
+  }
 
   const tierCurrent = parseInt(tierCurrentRaw, 10);
   const tierPeak = parseInt(tierPeakRaw, 10);
   const currentValue = parseInt(currentValueRaw, 10);
   const peakValue = parseInt(peakValueRaw, 10);
 
-  // Top 500: tier = rank number (1–500), otherwise 1–5
   const isTop500Current = rankCurrentNorm === 'Top 500';
   const isTop500Peak = rankPeakNorm === 'Top 500';
-  if (!isTop500Current && (tierCurrent < 1 || tierCurrent > 5)) return null;
-  if (!isTop500Peak && (tierPeak < 1 || tierPeak > 5)) return null;
+  if (!isTop500Current && (tierCurrent < 1 || tierCurrent > 5)) {
+    console.warn(`[parser] OW: tierCurrent ${tierCurrent} out of range 1-5 for rank ${rankCurrentNorm}`);
+    return null;
+  }
+  if (!isTop500Peak && (tierPeak < 1 || tierPeak > 5)) {
+    console.warn(`[parser] OW: tierPeak ${tierPeak} out of range 1-5 for rank ${rankPeakNorm}`);
+    return null;
+  }
 
   return {
     game: 'OVERWATCH',
@@ -219,28 +250,41 @@ export function parseDeadlock(content) {
   const body = content.replace(/^\s*LB_UPDATE_DL:\s*/i, '').trim();
 
   const playerMatch = body.match(/^@(.+?)\s+(\S+)\s+(.+)$/);
-  if (!playerMatch) return null;
+  if (!playerMatch) {
+    console.warn(`[parser] DL: could not extract @PlayerName hero rest from: "${body.slice(0,80)}"`);
+    return null;
+  }
 
   const playerName = sanitise(playerMatch[1]);
   const hero = sanitise(playerMatch[2]);
   const rest = playerMatch[3];
 
-  // Deadlock tiers go 1–6 where 6 = highest
   const rankPattern = new RegExp(
     `^(${dlRankAlt})\\s+(\\d+)\\s+(\\d+)\\s+(.+)$`,
     'i'
   );
   const m = rest.match(rankPattern);
-  if (!m) return null;
+  if (!m) {
+    console.warn(`[parser] DL: could not match rank pattern in: "${rest.slice(0,80)}"`);
+    console.warn(`[parser] DL: expected format: Rank tier value date`);
+    console.warn(`[parser] DL: valid ranks are: ${DL_RANKS.join(', ')}`);
+    return null;
+  }
 
   const [, rankCurrent, tierCurrentRaw, currentValueRaw, dateRaw] = m;
 
   const rankCurrentNorm = normaliseRankName(rankCurrent, DL_RANKS);
-  if (!rankCurrentNorm) return null;
+  if (!rankCurrentNorm) {
+    console.warn(`[parser] DL: invalid rank name: "${rankCurrent}"`);
+    return null;
+  }
 
   const tierCurrent = parseInt(tierCurrentRaw, 10);
   const currentValue = parseInt(currentValueRaw, 10);
-  if (tierCurrent < 1 || tierCurrent > 6) return null;
+  if (tierCurrent < 1 || tierCurrent > 6) {
+    console.warn(`[parser] DL: tierCurrent ${tierCurrent} out of range 1-6`);
+    return null;
+  }
 
   return {
     game: 'DEADLOCK',
